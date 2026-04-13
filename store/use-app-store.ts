@@ -22,7 +22,10 @@ interface AppState {
   moveTaskToDate: (taskId: string, dueDate: string | null) => void;
   addSubtask: (taskId: string, title: string) => void;
   toggleSubtask: (taskId: string, subtaskId: string) => void;
+  addHabit: (title: string, target: number, type?: Habit["type"]) => void;
   incrementHabit: (habitId: string) => void;
+  decrementHabit: (habitId: string) => void;
+  updateHabitTarget: (habitId: string, target: number) => void;
   setSettings: (settings: Partial<Settings>) => void;
   setActiveDate: (date: string) => void;
 }
@@ -30,6 +33,8 @@ interface AppState {
 const persist = async (data: AppData) => {
   await saveData(data);
 };
+
+const habitColors = ["#7C93FF", "#4FB7A8", "#F59E0B", "#F472B6", "#A78BFA"];
 
 export const useAppStore = create<AppState>((set, get) => ({
   data: seedData,
@@ -132,24 +137,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     void persist(data);
   },
 
+  addHabit: (title, target, type = "count") => {
+    const data = {
+      ...get().data,
+      habits: [
+        {
+          id: crypto.randomUUID(),
+          title,
+          type,
+          target: Math.max(1, target),
+          color: habitColors[get().data.habits.length % habitColors.length],
+          logs: [],
+          createdAt: new Date().toISOString(),
+        },
+        ...get().data.habits,
+      ],
+    };
+    set({ data });
+    void persist(data);
+  },
+
   incrementHabit: (habitId) => {
-    const today = format(new Date(), "yyyy-MM-dd");
+    const activeDate = get().ui.activeDate;
 
     const habits = get().data.habits.map((habit): Habit => {
       if (habit.id !== habitId) return habit;
 
-      const existing = habit.logs.find((log) => log.date === today);
+      const existing = habit.logs.find((log) => log.date === activeDate);
       if (!existing) {
         return {
           ...habit,
-          logs: [...habit.logs, { date: today, value: 1 }],
+          logs: [...habit.logs, { date: activeDate, value: 1 }],
         };
       }
 
       return {
         ...habit,
         logs: habit.logs.map((log) =>
-          log.date === today
+          log.date === activeDate
             ? {
                 ...log,
                 value:
@@ -161,6 +186,39 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       };
     });
+
+    const data = { ...get().data, habits };
+    set({ data });
+    void persist(data);
+  },
+
+  decrementHabit: (habitId) => {
+    const activeDate = get().ui.activeDate;
+    const habits = get().data.habits.map((habit): Habit => {
+      if (habit.id !== habitId) return habit;
+
+      const existing = habit.logs.find((log) => log.date === activeDate);
+      if (!existing) return habit;
+
+      return {
+        ...habit,
+        logs: habit.logs
+          .map((log) =>
+            log.date === activeDate ? { ...log, value: Math.max(0, log.value - 1) } : log,
+          )
+          .filter((log) => !(log.date === activeDate && log.value === 0)),
+      };
+    });
+
+    const data = { ...get().data, habits };
+    set({ data });
+    void persist(data);
+  },
+
+  updateHabitTarget: (habitId, target) => {
+    const habits = get().data.habits.map((habit) =>
+      habit.id === habitId ? { ...habit, target: Math.max(1, target) } : habit,
+    );
 
     const data = { ...get().data, habits };
     set({ data });

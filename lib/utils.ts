@@ -1,11 +1,12 @@
 import { clsx, type ClassValue } from "clsx";
 import {
+  endOfMonth,
   endOfWeek,
   format,
-  isSameDay,
   isToday,
   isTomorrow,
   parseISO,
+  startOfMonth,
   startOfWeek,
   subDays,
 } from "date-fns";
@@ -19,6 +20,19 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDateRu(date: Date, token = "d MMMM, EEEE") {
   return format(date, token, { locale: ru });
+}
+
+export function toDateKey(dateLike: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateLike)) {
+    return dateLike;
+  }
+
+  const parsed = parseISO(dateLike);
+  if (!Number.isNaN(parsed.getTime())) {
+    return format(parsed, "yyyy-MM-dd");
+  }
+
+  return dateLike.slice(0, 10);
 }
 
 export function groupTasks(tasks: Task[]) {
@@ -52,7 +66,7 @@ export function groupTasks(tasks: Task[]) {
 }
 
 export function calculateStreak(habit: Habit): number {
-  const byDate = new Map(habit.logs.map((log) => [log.date, log.value]));
+  const byDate = new Map(habit.logs.map((log) => [toDateKey(log.date), log.value]));
   let streak = 0;
 
   for (let i = 0; i < 365; i += 1) {
@@ -75,7 +89,28 @@ export function calculateSuccessRate(habit: Habit): number {
   return Math.round((completed / habit.logs.length) * 100);
 }
 
-export const findHabitValueToday = (habit: Habit) => {
-  const today = new Date();
-  return habit.logs.find((log) => isSameDay(parseISO(log.date), today))?.value ?? 0;
+export const findHabitValueByDate = (habit: Habit, dateKey: string) => {
+  return habit.logs.find((log) => toDateKey(log.date) === dateKey)?.value ?? 0;
+};
+
+export const calculateHabitMonthPlan = (habit: Habit, month: Date) => {
+  const monthStart = startOfMonth(month);
+  const monthEnd = endOfMonth(month);
+  const monthLabel = format(month, "yyyy-MM");
+
+  const daysInMonth = Number(format(monthEnd, "d"));
+  const planned = daysInMonth * habit.target;
+
+  const completed = habit.logs.reduce((sum, log) => {
+    if (!toDateKey(log.date).startsWith(monthLabel)) return sum;
+    const value = habit.type === "boolean" ? Math.min(1, log.value) : log.value;
+    return sum + Math.min(value, habit.target);
+  }, 0);
+
+  return {
+    planned,
+    completed,
+    percent: planned === 0 ? 0 : Math.round((completed / planned) * 100),
+    monthStart,
+  };
 };
