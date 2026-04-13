@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Bell, Settings } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { endOfMonth, format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { AddTaskInput } from "@/components/dashboard/add-task-input";
 import { CalendarView } from "@/components/dashboard/calendar-view";
@@ -11,7 +11,8 @@ import { HabitCard } from "@/components/dashboard/habit-card";
 import { TaskSection } from "@/components/dashboard/task-section";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { groupTasks } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { calculateHabitMonthPlan, findHabitValueByDate, groupTasks, toDateKey } from "@/lib/utils";
 import { useAppStore } from "@/store/use-app-store";
 
 const greeting = () => {
@@ -23,8 +24,23 @@ const greeting = () => {
 
 export default function HomePage() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const { data, ui, hydrated, load, addTask, incrementHabit, toggleTask, updateTask, setActiveDate, toggleSubtask } =
-    useAppStore();
+  const [habitTitle, setHabitTitle] = useState("");
+  const [habitTarget, setHabitTarget] = useState(1);
+  const {
+    data,
+    ui,
+    hydrated,
+    load,
+    addTask,
+    addHabit,
+    incrementHabit,
+    decrementHabit,
+    updateHabitTarget,
+    toggleTask,
+    updateTask,
+    setActiveDate,
+    toggleSubtask,
+  } = useAppStore();
 
   useEffect(() => {
     void load();
@@ -49,9 +65,25 @@ export default function HomePage() {
 
   const grouped = useMemo(() => groupTasks(data.tasks.filter((task) => !task.completed)), [data.tasks]);
 
-  const tasksForActiveDate = data.tasks.filter((task) =>
-    task.dueDate ? format(parseISO(task.dueDate), "yyyy-MM-dd") === ui.activeDate : false,
-  );
+  const tasksForActiveDate = data.tasks.filter((task) => (task.dueDate ? toDateKey(task.dueDate) === ui.activeDate : false));
+
+  const monthPlan = data.habits.map((habit) => ({
+    habit,
+    plan: calculateHabitMonthPlan(habit, new Date(ui.activeDate)),
+  }));
+
+  const monthTitle = format(new Date(ui.activeDate), "LLLL yyyy", { locale: ru });
+  const daysInSelectedMonth = Number(format(endOfMonth(new Date(ui.activeDate)), "d"));
+
+  const handleAddHabit = (event: FormEvent) => {
+    event.preventDefault();
+    const title = habitTitle.trim();
+    if (!title) return;
+
+    addHabit(title, habitTarget, habitTarget > 1 ? "count" : "boolean");
+    setHabitTitle("");
+    setHabitTarget(1);
+  };
 
   if (!hydrated) {
     return <main className="p-6 text-zinc-500">Загрузка...</main>;
@@ -75,14 +107,57 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section>
-          <h2 className="mb-3 text-sm font-medium text-zinc-500">Привычки</h2>
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-zinc-500">Привычки ({ui.activeDate})</h2>
+          <form onSubmit={handleAddHabit} className="flex flex-wrap gap-2">
+            <Input
+              value={habitTitle}
+              onChange={(event) => setHabitTitle(event.target.value)}
+              placeholder="Новая привычка"
+              className="h-10 max-w-xs"
+            />
+            <Input
+              value={habitTarget}
+              onChange={(event) => setHabitTarget(Number(event.target.value) || 1)}
+              type="number"
+              min={1}
+              className="h-10 w-24"
+            />
+            <Button type="submit" size="sm">
+              Добавить привычку
+            </Button>
+          </form>
           <div className="flex gap-3 overflow-x-auto pb-1">
             {data.habits.map((habit) => (
-              <HabitCard key={habit.id} habit={habit} onTap={() => incrementHabit(habit.id)} onOpen={() => null} />
+              <HabitCard
+                key={habit.id}
+                habit={habit}
+                value={findHabitValueByDate(habit, ui.activeDate)}
+                onIncrement={() => incrementHabit(habit.id)}
+                onDecrement={() => decrementHabit(habit.id)}
+                onTargetChange={(target) => updateHabitTarget(habit.id, target)}
+              />
             ))}
           </div>
         </section>
+
+        <Card className="p-4">
+          <h3 className="mb-1 text-sm font-semibold">План привычек на {monthTitle}</h3>
+          <p className="mb-3 text-xs text-zinc-500">Расчет: цель в день × {daysInSelectedMonth} дней.</p>
+          <div className="space-y-2">
+            {monthPlan.map(({ habit, plan }) => (
+              <div key={habit.id} className="rounded-xl bg-zinc-50 p-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>{habit.title}</span>
+                  <span className="text-zinc-500">{plan.percent}%</span>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  Выполнено {plan.completed} из {plan.planned} повторов
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
 
         {showQuickAdd && (
           <Card className="p-4">

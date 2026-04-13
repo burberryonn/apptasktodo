@@ -5,12 +5,11 @@ import {
   endOfMonth,
   format,
   isSameMonth,
-  parseISO,
   startOfMonth,
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Task } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, toDateKey } from "@/lib/utils";
 
 interface CalendarViewProps {
   month: Date;
@@ -30,7 +29,7 @@ export function CalendarView({ month, activeDate, tasks, onSelectDate }: Calenda
       <div className="grid grid-cols-7 gap-1">
         {days.map((day) => {
           const key = format(day, "yyyy-MM-dd");
-          const hasTasks = tasks.some((task) => task.dueDate && format(parseISO(task.dueDate), "yyyy-MM-dd") === key);
+          const hasTasks = tasks.some((task) => task.dueDate && toDateKey(task.dueDate) === key);
           const active = key === activeDate;
 
           return (
